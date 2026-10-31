@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     SUPABASE_BUCKET: str = "wardrobe"
     MAX_UPLOAD_MB: int = 10
     ALLOWED_IMAGE_TYPES: str = "image/jpeg,image/png,image/webp"
+    CUTOUT_API_KEY: str = ""
 
     SESSION_SECRET: str = "default_secret_please_change_in_production"
     SESSION_DAYS: int = 30

@@ -77,6 +77,13 @@ FLATLAY_REFINE_BAND_FRAC = 0.030   # local repair band, wider than the worn path
 FLATLAY_ELIGIBLE_RATIO = 0.6
 FLATLAY_MAX_AREA = 0.75   # above this the "subject" is really the surface
 
+# Completing a worn garment: paint in what a hand, arm, hair or bag hid.
+OCCLUDER_IDS = (2, 14, 15, 16, 17)   # hair, arms (hands are part of them), bag, scarf
+COMPLETE_RADIUS_FRAC = 0.03   # closes notches up to ~6% of the long side wide
+COMPLETE_MAX_FRAC = 0.25      # hiding more than this means guessing the shape, not repairing it
+COMPLETE_MIN_FRAC = 0.01      # less is invisible, and LaMa still costs ~20 s on CPU
+LAMA_MAX_SIDE = 1024          # LaMa on CPU slows sharply past this
+
 
 def _resize_to(img: Image.Image, max_side: int) -> Image.Image:
     if max(img.size) <= max_side:
@@ -288,6 +295,48 @@ def _reject(mask: np.ndarray, certainty: np.ndarray, frame_area: int) -> str | N
     return None
 
 
+def _hidden_part(mask: np.ndarray, labels: np.ndarray, long_side: int) -> np.ndarray:
+    """Occluder pixels lying where the garment's own outline would continue.
+
+    A morphological closing bridges the notch a hand cuts into a hem; only the
+    pixels the model calls a hand, arm, hair or bag are taken from it, so a real
+    opening such as the neckline (neck skin is "Face") is never filled. Done with
+    distance transforms because a 77px structuring element is far too slow.
+    """
+    r = max(2, round(long_side * COMPLETE_RADIUS_FRAC))
+    dilated = ndimage.distance_transform_edt(~mask) <= r
+    closed = ndimage.distance_transform_edt(dilated) > r
+    return (closed | mask) & np.isin(labels, OCCLUDER_IDS)
+
+
+def _fill_hidden(crop: Image.Image, hidden: np.ndarray) -> Image.Image:
+    """Paint the hidden pixels of a crop with LaMa; every other pixel stays real."""
+    from backend import flatten   # flatten imports this module, so import late
+
+    holes = np.array(Image.fromarray(hidden).resize(crop.size, Image.NEAREST))
+    out = np.array(crop)
+    rgb = out[..., :3].copy()
+    solid = (out[..., 3] > 128) & ~holes
+    if not holes.any() or not solid.any():
+        return crop
+    # LaMa reads its context from around the hole; the background would bleed in.
+    rgb[~solid & ~holes] = np.median(rgb[solid], axis=0).astype(np.uint8)
+
+    scale = min(1.0, LAMA_MAX_SIDE / max(crop.size))
+    if scale < 1.0:
+        small = (max(1, round(crop.width * scale)), max(1, round(crop.height * scale)))
+        small_rgb = np.array(Image.fromarray(rgb).resize(small, Image.LANCZOS))
+        # Bilinear then >0 marks every small pixel that touches a hole.
+        small_holes = np.array(Image.fromarray(holes.astype(np.uint8) * 255).resize(small, Image.BILINEAR)) > 0
+        filled = flatten._lama_fill(small_rgb, small_holes)
+        filled = np.array(Image.fromarray(filled).resize(crop.size, Image.BICUBIC))
+    else:
+        filled = flatten._lama_fill(rgb, holes)
+
+    out[..., :3][holes] = filled[holes]
+    return Image.fromarray(out, mode="RGBA")
+
+
 def _compose_crop(source: Image.Image, alpha: np.ndarray, box: tuple) -> Image.Image:
     """Cut the garment out of `source` at full detail using a low-res alpha.
 
@@ -471,11 +520,14 @@ def _person_score(probs: np.ndarray) -> tuple[float, float]:
     return float(person.mean()), float(probs.max(axis=0)[person].mean())
 
 
-def extract_garments(img: Image.Image, user_id: int) -> dict:
+def extract_garments(img: Image.Image, user_id: int, complete: bool = False) -> dict:
     """Returns {"items": [...], "notice": str | None}.
 
     `notice` is set when the photo cannot be segmented meaningfully, so the
     caller can tell the user instead of silently storing a wrong guess.
+    `complete` paints in the parts of each worn garment a hand, arm, hair or bag
+    hid, and adds a `filled` fraction to each item. It is skipped quietly when
+    the LaMa weights are not installed.
     """
     source = img.convert("RGB")
     work = _resize_to(source, settings.WORK_SIDE)
@@ -531,7 +583,16 @@ def extract_garments(img: Image.Image, user_id: int) -> dict:
     # One matte for the whole photo, shared by every garment in it.
     subject = matting.subject_matte(work)
 
+    if complete:
+        from backend import flatten
+        try:
+            flatten._load_lama()
+        except flatten.ModelMissing:
+            complete = False
+    labels = probs.argmax(axis=0) if complete else None
+
     results = []
+    waist_up_dress = None
     for group in GARMENT_GROUPS:
         mask = _group_mask(probs, group["ids"])
         if mask.sum() < frame_area * MIN_AREA_FRAC:
@@ -550,7 +611,13 @@ def extract_garments(img: Image.Image, user_id: int) -> dict:
             if _reject(mask, certainty, frame_area):
                 continue
 
-        alpha = _feather_alpha(mask, feather_width)
+        hidden = None
+        if complete:
+            hidden = _hidden_part(mask, labels, max(work.size))
+            if not mask.sum() * COMPLETE_MIN_FRAC <= hidden.sum() <= mask.sum() * COMPLETE_MAX_FRAC:
+                hidden = None
+
+        alpha = _feather_alpha(mask if hidden is None else mask | hidden, feather_width)
 
         if subject is not None:
             # SegFormer says which garment each pixel is; the matte says where
@@ -567,6 +634,9 @@ def extract_garments(img: Image.Image, user_id: int) -> dict:
         ys, xs = np.where(alpha > 8)
         box = (ys.min(), ys.max(), xs.min(), xs.max())
         crop = _compose_crop(source, alpha, box)
+        if hidden is not None:
+            crop = _fill_hidden(crop, hidden[box[0]:box[1] + 1, box[2]:box[3] + 1])
+            mask = mask & ~hidden   # the colour comes from real fabric only
 
         # Colour sampled from the confident interior, away from the soft edge.
         core = ndimage.binary_erosion(mask, np.ones((5, 5)))
@@ -584,6 +654,18 @@ def extract_garments(img: Image.Image, user_id: int) -> dict:
             "confidence": round(score, 3),
             "image_url": f"/api/images/item/{stored_name}"
         })
+        # Bottom 2%, not the last row: _clean_mask's closing trims the frame edge.
+        if group["name"] == "Dress" and mask[-max(4, mask.shape[0] // 50):].any():
+            waist_up_dress = results[-1]
+        if complete:
+            results[-1]["filled"] = 0.0 if hidden is None else round(float(hidden.sum() / (mask.sum() + hidden.sum())), 3)
+
+    # This model labels a waist-up T-shirt "Dress" (0% Upper-clothes, 16% Dress on
+    # real photos). Cut off by the frame bottom with no top or trousers beside it,
+    # it is a top; a real dress in a full-length photo ends above the frame edge.
+    if waist_up_dress is not None and not any(
+            r["category"] in ("topwear", "bottomwear") for r in results):
+        waist_up_dress.update(name="Top", category="topwear")
 
     notice = None
     if not results:

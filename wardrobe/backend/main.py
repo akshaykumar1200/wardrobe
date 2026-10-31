@@ -10,7 +10,7 @@ from backend.config import settings
 from backend.database import engine, Base, SessionLocal
 from backend.models import User
 from backend.auth import hash_password, limiter
-from backend.routers import auth_routes, items, uploads, images, admin, outfits, wears
+from backend.routers import auth_routes, items, uploads, images, admin, outfits, wears, cutout
 
 app = FastAPI(title="Digital Wardrobe")
 
@@ -70,6 +70,7 @@ def startup_event():
 app.include_router(auth_routes.router)
 app.include_router(items.router)
 app.include_router(uploads.router)
+app.include_router(cutout.router)
 app.include_router(images.router)
 app.include_router(admin.router)
 app.include_router(outfits.router)

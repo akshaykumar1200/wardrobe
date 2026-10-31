@@ -10,6 +10,7 @@ from backend.config import settings
 from backend import crops
 
 _crop_db: ContextVar[object | None] = ContextVar("crop_db", default=None)
+_captured_crops: ContextVar[dict[str, bytes] | None] = ContextVar("captured_crops", default=None)
 
 
 @contextmanager
@@ -19,6 +20,17 @@ def use_crop_db(db):
         yield
     finally:
         _crop_db.reset(token)
+
+
+@contextmanager
+def capture_crops():
+    """Keep generated crop PNGs in memory for a stateless API response."""
+    captured: dict[str, bytes] = {}
+    token = _captured_crops.set(captured)
+    try:
+        yield captured
+    finally:
+        _captured_crops.reset(token)
 
 
 def _content_name(payload: bytes, suffix: str) -> str:
@@ -38,7 +50,8 @@ def get_user_storage_dir(user_id: int, category_folder: str = "originals") -> Pa
     return user_dir
 
 
-def validate_and_store_original(raw: bytes, content_type: str, user_id: int) -> tuple[str, int, Image.Image]:
+def validate_image(raw: bytes, content_type: str) -> Image.Image:
+    """Validate an uploaded image and return its EXIF-corrected RGB pixels."""
     # 1. Size check
     max_bytes = settings.MAX_UPLOAD_MB * 1024 * 1024
     if len(raw) > max_bytes:
@@ -62,7 +75,11 @@ def validate_and_store_original(raw: bytes, content_type: str, user_id: int) -> 
         raise HTTPException(400, "Image resolution is too large")
 
     # 5. EXIF rotation + strip location metadata via RGB re-encoding
-    img_clean = ImageOps.exif_transpose(img).convert("RGB")
+    return ImageOps.exif_transpose(img).convert("RGB")
+
+
+def validate_and_store_original(raw: bytes, content_type: str, user_id: int) -> tuple[str, int, Image.Image]:
+    img_clean = validate_image(raw, content_type)
 
     # 6. Content-addressed filename (server-generated, never client input).
     # Hashes the normalised JPEG we are about to write, not the raw upload, so
@@ -105,6 +122,11 @@ def save_garment_crop(crop_img: Image.Image, user_id: int, db=None) -> tuple[str
     payload = buf.getvalue()
 
     stored_name = _content_name(payload, ".png")
+    captured = _captured_crops.get()
+    if captured is not None:
+        captured[stored_name] = payload
+        return stored_name, len(payload)
+
     db = db or _crop_db.get()
     return stored_name, crops.put(db, user_id, stored_name, payload)
 
@@ -118,6 +140,8 @@ ORPHAN_CROP_AGE = 3600
 
 def sweep_orphan_crops(user_id: int, keep: set[str], db=None) -> int:
     """Remove item crops older than an hour that no item row points at."""
+    if _captured_crops.get() is not None:
+        return 0
     freed = 0
     db = db or _crop_db.get()
     for name, size in crops.old_names(db, user_id, ORPHAN_CROP_AGE).items():
