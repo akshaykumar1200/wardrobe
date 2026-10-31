@@ -1,0 +1,15 @@
+venv/
+storage/
+backups/
+*.db
+**/*.db
+.env
+**/.env
+__pycache__/
+**/__pycache__/
+.gaffer/
+tests/
+frontend/node_modules/
+frontend/src/
+cloudflared.exe
+/*.png

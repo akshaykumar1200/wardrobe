@@ -1,0 +1,14 @@
+.env
+venv/
+storage/
+*.db
+node_modules/
+frontend/dist/
+__pycache__/
+*.pyc
+
+# never commit: binaries, screenshots made from personal photos, build leftovers, agent logs
+*.exe
+/*.png
+/dist-singlefile-backup.html
+.gaffer/logs/
