@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AURA Fashion AI — Intelligent Digital Wardrobe & Outfit Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+  <!-- Background Animated Gradient Orbs -->
+  <div class="glow-orb orb-1"></div>
+  <div class="glow-orb orb-2"></div>
+  <div class="glow-orb orb-3"></div>
+
+  <header class="app-header">
+    <div class="header-container">
+      <div class="brand">
+        <div class="brand-logo">✦</div>
+        <div class="brand-text">
+          <span class="brand-name">AURA</span>
+          <span class="brand-tag">FASHION AI</span>
+        </div>
+      </div>
+
+      <nav class="nav-tabs" id="navTabs">
+        <button class="nav-btn active" data-tab="closet" id="tabCloset">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.38 3.46L16 2a4 4 0 01-8 0L3.62 3.46a2 2 0 00-1.34 2.23l.58 3.47a1 1 0 00.99.84H6v10c0 1.1.9 2 2 2h8a2 2 0 002-2V10h2.15a1 1 0 00.99-.84l.58-3.47a2 2 0 00-1.34-2.23z"/></svg>
+          Digital Closet
+        </button>
+        <button class="nav-btn" data-tab="outfits" id="tabOutfits">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+          AI Outfit Studio
+        </button>
+        <button class="nav-btn" data-tab="upload" id="tabUpload">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+          Upload & Extract
+        </button>
+        <button class="nav-btn" data-tab="analytics" id="tabAnalytics">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          Analytics
+        </button>
+      </nav>
+
+      <div class="header-actions">
+        <button class="btn btn-primary" id="btnQuickUpload">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add Garment
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="app-main">
+
+    <!-- TAB 1: CLOSET VIEW -->
+    <section class="tab-pane active" id="paneCloset">
+      <div class="pane-header">
+        <div>
+          <h1 class="pane-title">Your Wardrobe Collection</h1>
+          <p class="pane-desc">AI-extracted high-resolution garments with pattern & color analysis</p>
+        </div>
+        <div class="search-box">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="searchInput" placeholder="Search by name, color, pattern...">
+        </div>
+      </div>
+
+      <!-- Category Filter Chips -->
+      <div class="category-chips" id="categoryChips">
+        <button class="chip active" data-category="all">All Items (<span id="countAll">0</span>)</button>
+        <button class="chip" data-category="topwear">Topwear (<span id="countTopwear">0</span>)</button>
+        <button class="chip" data-category="bottomwear">Bottomwear (<span id="countBottomwear">0</span>)</button>
+        <button class="chip" data-category="shoes">Shoes (<span id="countShoes">0</span>)</button>
+        <button class="chip" data-category="accessories">Accessories (<span id="countAccessories">0</span>)</button>
+        <button class="chip" data-category="other">Other (<span id="countOther">0</span>)</button>
+      </div>
+
+      <!-- Garment Grid -->
+      <div class="garments-grid" id="garmentsGrid">
+        <!-- Injected via JS -->
+      </div>
+      <div class="empty-state hidden" id="closetEmptyState">
+        <div class="empty-icon">🧥</div>
+        <h3>No garments found in this category</h3>
+        <p>Upload an outfit photo or lay pieces on a flat surface to extract them with AI.</p>
+      </div>
+    </section>
+
+    <!-- TAB 2: AI OUTFIT STUDIO -->
+    <section class="tab-pane" id="paneOutfits">
+      <div class="pane-header">
+        <div>
+          <h1 class="pane-title">AI Stylist & Outfit Studio</h1>
+          <p class="pane-desc">Computational color theory, lightness contrast, and harmonic rotation</p>
+        </div>
+        <button class="btn btn-secondary" id="btnRefreshSuggestions">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+          Generate New Suggestions
+        </button>
+      </div>
+
+      <div class="outfit-suggestions-container" id="suggestionsContainer">
+        <!-- Injected via JS -->
+      </div>
+    </section>
+
+    <!-- TAB 3: UPLOAD & EXTRACT -->
+    <section class="tab-pane" id="paneUpload">
+      <div class="upload-center-card">
+        <h1 class="pane-title text-center">AI Dual-Model Garment Extraction</h1>
+        <p class="pane-desc text-center">Upload any worn outfit photo or flat-lay piece. SegFormer and BiRefNet segment and isolate individual clothing items automatically.</p>
+
+        <div class="drop-zone" id="dropZone">
+          <input type="file" id="fileInput" accept="image/jpeg,image/png,image/webp" hidden>
+          <div class="drop-icon">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+          </div>
+          <h3 class="drop-title">Drag & drop your photo here</h3>
+          <p class="drop-subtitle">Supports JPG, PNG, WEBP (Up to 15MB)</p>
+          <button class="btn btn-primary" id="btnBrowse">Browse File</button>
+        </div>
+
+        <!-- Extraction Progress Indicator -->
+        <div class="extraction-status hidden" id="extractionStatus">
+          <div class="spinner"></div>
+          <div class="status-details">
+            <h4 id="statusTitle">Running AI Extraction Pipeline...</h4>
+            <p id="statusStep">1. Loading SegFormer & BiRefNet weights</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 4: ANALYTICS -->
+    <section class="tab-pane" id="paneAnalytics">
+      <div class="pane-header">
+        <div>
+          <h1 class="pane-title">Wardrobe Analytics</h1>
+          <p class="pane-desc">Composition, color distribution, and rotation metrics</p>
+        </div>
+      </div>
+
+      <div class="stats-overview-grid" id="statsOverviewGrid">
+        <!-- Injected via JS -->
+      </div>
+    </section>
+
+  </main>
+
+  <!-- MODAL: REVIEW DETECTED GARMENTS -->
+  <div class="modal-backdrop hidden" id="reviewModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <h2>Review Extracted Garments</h2>
+          <p id="modalSubtitle">Verify piece names and color classifications before saving to closet</p>
+        </div>
+        <button class="modal-close" id="btnCloseReview">&times;</button>
+      </div>
+
+      <div class="modal-body" id="reviewGarmentsList">
+        <!-- Injected via JS -->
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="btnDiscardAll">Discard</button>
+        <button class="btn btn-primary" id="btnSaveAllToCloset">Save All to Closet ✦</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION -->
+  <div class="toast hidden" id="toast"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

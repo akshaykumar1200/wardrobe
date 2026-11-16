@@ -1,0 +1,11 @@
+# Versions that produced the test sheet. torch and torchvision are installed
+# separately (CPU or GPU build), see TRYOFF_SETUP.md.
+diffusers==0.27.2
+transformers==4.48.3
+huggingface_hub==0.25.2
+accelerate==1.15.0
+safetensors==0.8.0
+numpy==1.26.4
+scipy==1.17.1
+opencv-python==4.11.0.86
+Pillow==9.5.0

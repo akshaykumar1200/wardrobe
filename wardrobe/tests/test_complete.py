@@ -122,3 +122,42 @@ def test_tiny_hidden_part_skips_lama(photo, monkeypatch):
     item, crop = top(photo, complete=True)
     assert px(crop, 150, 100)[3] == 0
     assert item["filled"] == 0.0
+
+
+def worn(monkeypatch, labels):
+    img, probs = labelled(labels)
+    monkeypatch.setattr(segmenter, "_predict", lambda image: probs)
+    monkeypatch.setattr(segmenter.matting, "subject_matte", lambda image: None)
+    with capture_crops() as captured:
+        items = segmenter.extract_garments(img, 0)["items"]
+    sizes = {i["name"]: Image.open(io.BytesIO(captured[i["stored_name"]])).size for i in items}
+    return [(i["name"], i["category"]) for i in items], sizes
+
+
+def test_long_top_split_into_top_and_dress_is_one_top(monkeypatch):
+    labels = np.zeros((200, 200), np.uint8)
+    labels[5:35, 90:110] = 11                     # face
+    labels[40:90, 50:150] = 4                     # the model calls the chest "upper-clothes"
+    labels[90:150, 50:150] = 7                    # ...and the long hem "dress"
+    labels[150:200, 70:130] = 6                   # trousers below: nobody wears a dress over them
+    names, sizes = worn(monkeypatch, labels)
+    assert names == [("Top", "topwear"), ("Trousers", "bottomwear")]
+    assert abs(sizes["Top"][1] - 110) <= 6        # chest and hem together, 40..150
+
+
+def test_trouser_strip_cut_off_by_the_frame_is_dropped(monkeypatch):
+    labels = np.zeros((200, 200), np.uint8)
+    labels[5:35, 90:110] = 11                     # face
+    labels[40:170, 50:150] = 4                    # shirt
+    labels[170:200, 50:150] = 6                   # only the waistband made it into the photo
+    names, _ = worn(monkeypatch, labels)
+    assert names == [("Top", "topwear")]
+
+
+def test_full_length_trousers_at_the_frame_edge_are_kept(monkeypatch):
+    labels = np.zeros((200, 200), np.uint8)
+    labels[5:35, 90:110] = 11                     # face
+    labels[40:100, 50:150] = 4                    # shirt
+    labels[100:200, 60:140] = 6                   # trousers running out of the frame, but mostly there
+    names, _ = worn(monkeypatch, labels)
+    assert names == [("Top", "topwear"), ("Trousers", "bottomwear")]

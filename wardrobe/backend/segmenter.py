@@ -38,6 +38,7 @@ MAX_AREA_FRAC = 0.60    # above this the mask has swallowed the background
 MIN_FILL_RATIO = 0.15   # mask area vs its own bbox; scattered masks are leaks
 MIN_CONFIDENCE = 0.55   # mean softmax prob inside the mask
 PART_MIN_FRAC = 0.12    # a secondary blob must be >=12% of the largest to count
+STRIP_MAX_ASPECT = 0.5  # bottomwear at the frame's bottom edge, shorter than half its width, is a waistband
 
 # Colour refinement. Only groups the model is unsure about get refined; Tops and
 # Trousers come back at 0.97-0.99 and are already clean, so touching them could
@@ -293,6 +294,18 @@ def _reject(mask: np.ndarray, certainty: np.ndarray, frame_area: int) -> str | N
         return "low_confidence"
 
     return None
+
+
+def _touches_bottom(mask: np.ndarray) -> bool:
+    # Bottom 2%, not the last row: _clean_mask's closing trims the frame edge.
+    return bool(mask[-max(4, mask.shape[0] // 50):].any())
+
+
+def _is_cut_off_strip(mask: np.ndarray) -> bool:
+    """Trousers the photo only caught the waistband of: wide, short, and run out of the frame."""
+    ys, xs = np.where(mask)
+    height, width = ys.max() - ys.min() + 1, xs.max() - xs.min() + 1
+    return _touches_bottom(mask) and height < width * STRIP_MAX_ASPECT
 
 
 def _hidden_part(mask: np.ndarray, labels: np.ndarray, long_side: int) -> np.ndarray:
@@ -591,9 +604,21 @@ def extract_garments(img: Image.Image, user_id: int, complete: bool = False) -> 
             complete = False
     labels = probs.argmax(axis=0) if complete else None
 
+    # This model splits a long shirt or kurta into "upper-clothes" on the chest and
+    # "dress" on the hem. A dress is not worn over trousers or a skirt, so with
+    # bottomwear in the photo both halves are one top.
+    # shortcut: a real dress over leggings also becomes a Top; the user can rename it on review.
+    def present(*ids):
+        return _group_mask(probs, ids).sum() >= frame_area * MIN_AREA_FRAC
+
+    groups = GARMENT_GROUPS
+    if present(7) and present(5, 6):
+        groups = [dict(g, ids=(4, 7)) if g["name"] == "Top" else g
+                  for g in GARMENT_GROUPS if g["name"] != "Dress"]
+
     results = []
     waist_up_dress = None
-    for group in GARMENT_GROUPS:
+    for group in groups:
         mask = _group_mask(probs, group["ids"])
         if mask.sum() < frame_area * MIN_AREA_FRAC:
             continue
@@ -610,6 +635,9 @@ def extract_garments(img: Image.Image, user_id: int, complete: bool = False) -> 
             mask = _clean_mask(_refine_mask(mask, rgb, probs), group["parts"])
             if _reject(mask, certainty, frame_area):
                 continue
+
+        if group["category"] == "bottomwear" and _is_cut_off_strip(mask):
+            continue
 
         hidden = None
         if complete:
@@ -654,8 +682,7 @@ def extract_garments(img: Image.Image, user_id: int, complete: bool = False) -> 
             "confidence": round(score, 3),
             "image_url": f"/api/images/item/{stored_name}"
         })
-        # Bottom 2%, not the last row: _clean_mask's closing trims the frame edge.
-        if group["name"] == "Dress" and mask[-max(4, mask.shape[0] // 50):].any():
+        if group["name"] == "Dress" and _touches_bottom(mask):
             waist_up_dress = results[-1]
         if complete:
             results[-1]["filled"] = 0.0 if hidden is None else round(float(hidden.sum() / (mask.sum() + hidden.sum())), 3)

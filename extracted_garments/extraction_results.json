@@ -1,0 +1,41 @@
+{
+  "input_file": "C:\\Users\\Lenovo\\.gemini\\antigravity-ide\\brain\\7bc1c6fd-8c3d-44cd-92a0-194ebf0c23ac\\.user_uploaded\\media_1786824813034.jpg",
+  "elapsed_seconds": 35.3,
+  "is_worn": true,
+  "person_confidence": 0.921,
+  "items": [
+    {
+      "name": "Top",
+      "category": "topwear",
+      "confidence": 0.982,
+      "dominant_color": "#2c524a",
+      "crop_file": "cutout_top.png",
+      "crop_size": [
+        264,
+        282
+      ]
+    },
+    {
+      "name": "Trousers",
+      "category": "bottomwear",
+      "confidence": 0.958,
+      "dominant_color": "#29374c",
+      "crop_file": "cutout_trousers.png",
+      "crop_size": [
+        188,
+        343
+      ]
+    },
+    {
+      "name": "Shoes",
+      "category": "shoes",
+      "confidence": 0.717,
+      "dominant_color": "#919090",
+      "crop_file": "cutout_shoes.png",
+      "crop_size": [
+        213,
+        62
+      ]
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The laptop serves plain http:// on the LAN, which Android 9+ blocks by
+     default. Android's network security config cannot express an IP range, and
+     the laptop's address comes from DHCP, so this permits cleartext broadly.
+
+     shortcut: cleartext allowed for all hosts, which also allows it in a
+     release build; tighten to a domain-config once the Cloudflare Tunnel gives
+     the server a real HTTPS hostname. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

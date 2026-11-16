@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "enabled": true,
+  "codex": {
+    "model": "gpt-6-luna",
+    "effort": "medium"
+  },
+  "claude": {
+    "model": "opus",
+    "effort": "high"
+  }
+}

@@ -1,0 +1,6 @@
+# Keep the environment, personal photos and outputs out of git.
+tryoff-venv/
+out/
+*.jpg
+*.jpeg
+*.png
