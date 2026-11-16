@@ -3,7 +3,8 @@ title: My Style Closet Cutout API
 emoji: 👕
 colorFrom: green
 colorTo: indigo
-sdk: docker
+sdk: gradio
+app_file: app.py
 app_port: 7860
 pinned: false
 ---
