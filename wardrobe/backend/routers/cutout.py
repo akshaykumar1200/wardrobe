@@ -11,6 +11,7 @@ from starlette.concurrency import run_in_threadpool
 
 from backend.auth import limiter
 from backend.config import settings
+from backend.flatlay import generate_flatlay
 from backend.segmenter import extract_garments
 from backend.storage import capture_crops, validate_image
 
@@ -62,25 +63,34 @@ async def _cut_out(img_clean: Image.Image) -> dict:
     started = time.monotonic()
     with capture_crops() as captured:
         result = await run_in_threadpool(extract_garments, img_clean, 0, complete=True)
-    seconds = time.monotonic() - started
 
-    items = []
-    for item in result["items"]:
+    async def _process_item(item):
         png = captured[item["stored_name"]]
-        with Image.open(io.BytesIO(png)) as crop:
+        flatlay_bytes = None
+        # Apply flat-lay generation to apparel (tops, bottomwear, dresses, etc.)
+        if settings.FLATLAY_ENABLED and item.get("category") in ("topwear", "bottomwear", "other"):
+            flatlay_bytes = await generate_flatlay(png, item["name"], item["color"])
+
+        final_png = flatlay_bytes if flatlay_bytes is not None else png
+        with Image.open(io.BytesIO(final_png)) as crop:
             width, height = crop.size
-        items.append({
+
+        return {
             "name": item["name"],
             "category": item["category"],
             "color": item["color"],
             "confidence": item.get("confidence"),
             "width": width,
             "height": height,
-            "png_base64": base64.b64encode(png).decode("ascii"),
-        })
+            "png_base64": base64.b64encode(final_png).decode("ascii"),
+            "is_flatlay": flatlay_bytes is not None,
+        }
+
+    items = await asyncio.gather(*[_process_item(item) for item in result["items"]])
+    seconds = time.monotonic() - started
 
     # Sizes and labels only, never the image or the key: shows what each caller's photo yielded.
     print(f"cutout {img_clean.size[0]}x{img_clean.size[1]} -> "
-          f"{[(i['name'], i['width'], i['height'], r.get('filled')) for i, r in zip(items, result['items'])]} in {seconds:.1f}s"
+          f"{[(i['name'], i['width'], i['height'], i['is_flatlay']) for i in items]} in {seconds:.1f}s"
           f"{' notice: ' + result['notice'] if result['notice'] else ''}", flush=True)
     return {"items": items, "notice": result["notice"], "seconds": seconds}

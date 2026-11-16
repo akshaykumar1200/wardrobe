@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     # 1024 costs 77s a photo against 23s for barely crisper edges.
     MATTING_SIDE: int = 512
 
+    # Cloud Generative Flat-Lay API (Gemini Nano-Banana / Interactions API)
+    GEMINI_API_KEY: str = ""
+    FLATLAY_ENABLED: bool = True
+    FLATLAY_MODEL: str = "gemini-nano-banana-2.1"
+
     PUBLIC_ORIGIN: str = "http://127.0.0.1:8000"
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
