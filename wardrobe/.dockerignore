@@ -1,0 +1,14 @@
+.venv
+venv
+tryoff-venv
+__pycache__
+*.pyc
+.pytest_cache
+storage
+backups
+*.db
+*.sqlite
+*.pt
+*.pth
+.env
+.git
