@@ -204,3 +204,90 @@ def test_failed_run_is_not_reused(client, monkeypatch):
         assert c.post("/api/cutout", files=files(), headers=headers).status_code == 500
         assert c.post("/api/cutout", files=files(), headers=headers).status_code == 200
     assert len(attempts) == 2
+
+
+# --- product picture of the top (TryOffDiff) ---
+
+def _fake_extract_big_top(img, user_id, complete=False):
+    entries = []
+    for name, category, size in (("Top", "topwear", (20, 20)), ("Shoes", "shoes", (4, 6))):
+        stored_name, byte_count = save_garment_crop(Image.new("RGBA", size, (28, 65, 58, 255)), user_id)
+        entries.append({"name": name, "category": category, "stored_name": stored_name, "color": "#1c413a",
+                        "bytes": byte_count, "confidence": 0.9, "image_url": f"/api/images/item/{stored_name}"})
+    return {"items": entries, "notice": None}
+
+
+# Stands in for tryoff/run_tryoff.py: a bright green shirt-sized block on a pale background.
+_FAKE_TRYOFF = """
+import sys
+from PIL import Image, ImageDraw
+src, dst = sys.argv[3].split(":")
+Image.open(src).close()
+img = Image.new("RGB", (128, 128), (240, 240, 238))
+ImageDraw.Draw(img).rectangle([30, 20, 97, 109], fill=(40, 200, 140))
+img.save(dst)
+"""
+
+
+def _post_with_tryoff(client, monkeypatch, tmp_path, script_text):
+    import sys
+    from backend import product_shot
+    from backend.routers import cutout
+    script = tmp_path / "fake_tryoff.py"
+    script.write_text(script_text)
+    monkeypatch.setattr(product_shot, "SCRIPT", script)
+    monkeypatch.setattr(settings, "TRYOFF_PYTHON", sys.executable)
+    monkeypatch.setattr(settings, "GEMINI_API_KEY", "")   # no network from tests
+    monkeypatch.setattr(settings, "CUTOUT_API_KEY", "shared-secret")
+    monkeypatch.setattr(cutout, "extract_garments", _fake_extract_big_top)
+    c, _, _ = client
+    response = c.post("/api/cutout", files={"image": ("photo.png", _upload_bytes(), "image/png")},
+                      headers={"X-Cutout-Key": "shared-secret"})
+    assert response.status_code == 200, response.text
+    return {i["name"]: i for i in response.json()["items"]}
+
+
+def test_top_becomes_a_drawn_product_picture_in_its_real_colour(client, monkeypatch, tmp_path):
+    items = _post_with_tryoff(client, monkeypatch, tmp_path, _FAKE_TRYOFF)
+    assert (items["Shoes"]["width"], items["Shoes"]["height"]) == (4, 6)   # only the top is drawn
+    top = Image.open(io.BytesIO(base64.b64decode(items["Top"]["png_base64"])))
+    assert top.mode == "RGBA"
+    assert abs(top.width - 68) <= 4 and abs(top.height - 90) <= 4          # the drawn block, cropped tight
+    r, g, b, a = top.getpixel((top.width // 2, top.height // 2))
+    assert a == 255
+    assert max(abs(r - 28), abs(g - 65), abs(b - 58)) <= 6                 # real colour, not the bright green
+
+
+def test_failed_drawing_keeps_the_real_cutout(client, monkeypatch, tmp_path):
+    items = _post_with_tryoff(client, monkeypatch, tmp_path, "import sys; sys.exit(1)")
+    assert (items["Top"]["width"], items["Top"]["height"]) == (20, 20)
+
+
+def test_two_tops_keep_their_cutouts(client, monkeypatch, tmp_path):
+    from backend.routers import cutout
+
+    def two_tops(img, user_id, complete=False):
+        result = _fake_extract_big_top(img, user_id, complete)
+        result["items"][1]["category"] = "topwear"
+        return result
+    items = _post_with_tryoff(client, monkeypatch, tmp_path, _FAKE_TRYOFF)   # sets everything up
+    cutout._jobs.clear()
+    monkeypatch.setattr(cutout, "extract_garments", two_tops)
+    c, _, _ = client
+    body = c.post("/api/cutout", files={"image": ("photo.png", _upload_bytes(), "image/png")},
+                  headers={"X-Cutout-Key": "shared-secret"}).json()
+    assert [(i["width"], i["height"]) for i in body["items"]] == [(20, 20), (4, 6)]
+
+
+def test_drawn_top_is_not_also_sent_to_gemini(client, monkeypatch, tmp_path):
+    from backend.routers import cutout
+    sent = []
+
+    async def fake_flatlay(png, name, color):
+        sent.append(name)
+        return None
+    monkeypatch.setattr(cutout, "generate_flatlay", fake_flatlay)
+    monkeypatch.setattr(settings, "FLATLAY_ENABLED", True)
+    items = _post_with_tryoff(client, monkeypatch, tmp_path, _FAKE_TRYOFF)
+    assert items["Top"]["is_flatlay"] is True       # drawn by TryOffDiff
+    assert "Top" not in sent

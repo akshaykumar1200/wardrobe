@@ -9,6 +9,7 @@ from fastapi import APIRouter, File, Header, HTTPException, Request, UploadFile
 from PIL import Image
 from starlette.concurrency import run_in_threadpool
 
+from backend import product_shot
 from backend.auth import limiter
 from backend.config import settings
 from backend.flatlay import generate_flatlay
@@ -61,14 +62,33 @@ async def cutout_photo(
 
 async def _cut_out(img_clean: Image.Image) -> dict:
     started = time.monotonic()
-    with capture_crops() as captured:
-        result = await run_in_threadpool(extract_garments, img_clean, 0, complete=True)
+    shot = product_shot.start(img_clean)   # draws the top on the GPU while the CPU cuts out
+    try:
+        with capture_crops() as captured:
+            result = await run_in_threadpool(extract_garments, img_clean, 0, complete=True)
+        # shortcut: TryOffDiff draws one upper garment, so with two tops (shirt + jacket)
+        # there is no telling which it drew; both keep their cut-outs.
+        tops = [i for i in result["items"] if i["category"] == "topwear"]
+        if shot and len(tops) == 1:
+            drawn = await run_in_threadpool(shot.result)
+            if drawn is not None:
+                with Image.open(io.BytesIO(captured[tops[0]["stored_name"]])) as real:
+                    product = await run_in_threadpool(product_shot.recolour, drawn, real)
+                if product is not None:
+                    buf = io.BytesIO()
+                    product.save(buf, format="PNG")
+                    captured[tops[0]["stored_name"]] = buf.getvalue()
+                    tops[0]["drawn"] = True
+    finally:
+        if shot:
+            shot.close()
 
     async def _process_item(item):
         png = captured[item["stored_name"]]
         flatlay_bytes = None
         # Apply flat-lay generation to apparel (tops, bottomwear, dresses, etc.)
-        if settings.FLATLAY_ENABLED and item.get("category") in ("topwear", "bottomwear", "other"):
+        # A top TryOffDiff already drew is not sent to Gemini as well.
+        if settings.FLATLAY_ENABLED and not item.get("drawn") and item.get("category") in ("topwear", "bottomwear", "other"):
             flatlay_bytes = await generate_flatlay(png, item["name"], item["color"])
 
         final_png = flatlay_bytes if flatlay_bytes is not None else png
@@ -83,7 +103,7 @@ async def _cut_out(img_clean: Image.Image) -> dict:
             "width": width,
             "height": height,
             "png_base64": base64.b64encode(final_png).decode("ascii"),
-            "is_flatlay": flatlay_bytes is not None,
+            "is_flatlay": flatlay_bytes is not None or bool(item.get("drawn")),
         }
 
     items = await asyncio.gather(*[_process_item(item) for item in result["items"]])
@@ -91,6 +111,6 @@ async def _cut_out(img_clean: Image.Image) -> dict:
 
     # Sizes and labels only, never the image or the key: shows what each caller's photo yielded.
     print(f"cutout {img_clean.size[0]}x{img_clean.size[1]} -> "
-          f"{[(i['name'], i['width'], i['height'], i['is_flatlay']) for i in items]} in {seconds:.1f}s"
+          f"{[(i['name'], i['width'], i['height'], r.get('filled'), 'drawn' if r.get('drawn') else 'flat-lay' if i['is_flatlay'] else 'cut-out') for i, r in zip(items, result['items'])]} in {seconds:.1f}s"
           f"{' notice: ' + result['notice'] if result['notice'] else ''}", flush=True)
     return {"items": items, "notice": result["notice"], "seconds": seconds}

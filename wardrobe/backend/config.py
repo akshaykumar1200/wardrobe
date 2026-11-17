@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     MAX_UPLOAD_MB: int = 10
     ALLOWED_IMAGE_TYPES: str = "image/jpeg,image/png,image/webp"
     CUTOUT_API_KEY: str = ""
+    # Python of the separate TryOffDiff environment (see tryoff/TRYOFF_SETUP.md).
+    # Empty keeps the service on real cut-outs only.
+    TRYOFF_PYTHON: str = ""
 
     SESSION_SECRET: str = "default_secret_please_change_in_production"
     SESSION_DAYS: int = 30
