@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     # Python of the separate TryOffDiff environment (see tryoff/TRYOFF_SETUP.md).
     # Empty keeps the service on real cut-outs only.
     TRYOFF_PYTHON: str = ""
+    # flow-mcp's local API (e.g. http://127.0.0.1:8787) for clean Google Flow product pictures.
+    # Empty turns it off.
+    FLOW_URL: str = ""
 
     SESSION_SECRET: str = "default_secret_please_change_in_production"
     SESSION_DAYS: int = 30
